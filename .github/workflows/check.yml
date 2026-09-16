@@ -1,0 +1,27 @@
+name: Check
+
+# Quality gate on every push and pull request (so Dependabot PRs are gated before auto-merge):
+# the OXC/TypeScript gate (oxfmt + oxlint + type-aware + tsc) plus the vitest unit and workerd
+# integration suites. The release build (release.yml) is separate.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - run: npm test

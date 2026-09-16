@@ -1,0 +1,30 @@
+version: 2
+
+# Updates land on `main` automatically (see .github/workflows/dependabot-auto-merge.yml);
+# release-please remains the gate for cutting a release. Dep bumps use the `chore` type so they
+# never force a release on their own — they ride along with the next real release.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: chore
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # One group, so vitest and @cloudflare/vitest-pool-workers (which pins vitest's major through
+  # its peer range) always move together.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: chore
+    groups:
+      npm:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: vitest
+        versions: [">= 4"]
