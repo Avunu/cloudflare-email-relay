@@ -6,15 +6,17 @@ import { BINDINGS, outboundService } from "./test/integration/outbound";
 // InboxQueue Durable Object (SQLite + alarm) and the ops API end-to-end: a message is stored
 // before it is pushed, a failed push is retried on the schedule, and a rejected one is not.
 //
-// Everything the worker fetches goes through `outboundService` — a fake Odoo that answers by
-// recipient and records what it was sent (test/integration/outbound.ts). There is no network.
+// Everything the worker fetches goes through `outboundService` — a fake Odoo and a fake Frappe
+// that answer by recipient and record what they were sent (test/integration/outbound.ts). There
+// is no network. The Worker under test is test/integration/worker.ts: the relay bound to the
+// fixture tenant table.
 //
 // Vitest-pool-workers v0.18+ (for vitest 4) exposes its runtime as a Vite plugin,
 // `cloudflareTest(workersConfig)`, rather than the older `poolOptions.workers` config.
 export default defineConfig({
 	plugins: [
 		cloudflareTest({
-			wrangler: { configPath: "./wrangler.jsonc" },
+			wrangler: { configPath: "./test/integration/wrangler.jsonc" },
 			miniflare: {
 				bindings: { ...BINDINGS },
 				outboundService,

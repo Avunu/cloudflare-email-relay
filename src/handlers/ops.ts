@@ -1,16 +1,21 @@
 import { opsTokenOf } from "../config";
-import type { MailWorkerEnv } from "../env";
-import { inboxQueue, isInboxStatus } from "../inbox-do";
+import type { RelayEnv } from "../env";
+import { inboxQueueFor, isInboxStatus } from "../inbox-do";
 import type { InboxStatus } from "../inbox-do";
 import { bearerToken, intParam, json, notFound, unauthorized } from "../lib/http";
-import { ULID_PATTERN, timingSafeEqual } from "../lib/util";
+import { ULID_PATTERN, logEvent, timingSafeEqual } from "../lib/util";
+import { SLUG_PATTERN } from "../tenant-schema";
+import type { TenantRegistry } from "../tenants";
 
-/** Default and ceiling for `?limit=` on GET /inbox. */
+/** Default and ceiling for `?limit=` on a tenant's inbox listing. */
 const LIST_DEFAULT = 50;
 const LIST_MAX = 500;
 
-/** `/inbox/<id>`, `/inbox/<id>/raw`, `/inbox/<id>/retry`. The id is validated separately. */
-const ITEM_ROUTE = /^\/inbox\/([^/]+)(?:\/(raw|retry))?$/;
+/**
+ * `/tenants/<slug>`, `/tenants/<slug>/inbox`, `/tenants/<slug>/inbox/<id-or-retry>`,
+ * `/tenants/<slug>/inbox/<id>/<raw|retry>`. The slug and the id are validated separately.
+ */
+const TENANT_ROUTE = /^\/tenants\/([^/]+)(?:\/inbox(?:\/([^/]+)(?:\/(raw|retry))?)?)?$/;
 
 /**
  * The ops API behind `fetch()`.
@@ -20,21 +25,28 @@ const ITEM_ROUTE = /^\/inbox\/([^/]+)(?:\/(raw|retry))?$/;
  * exist unless OPS_TOKEN is set: with no token every other path answers 404, the same as any
  * unknown path, so a deployment that never configured the API is indistinguishable from a worker
  * with no API at all. With a token, a missing or wrong bearer gets a 401; the comparison is
- * constant-time.
+ * constant-time. One token per Worker: the operator runs every tenant, and no tenant ever gets ops
+ * access to a shared relay.
  *
  * Routes:
  *
- * - `GET /inbox?status=&limit=` — queue rows, newest first, metadata only.
- * - `GET /inbox/:id` — one row.
- * - `GET /inbox/:id/raw` — the stored message, streamed from R2 as message/rfc822.
- * - `POST /inbox/:id/retry` — requeue one row: 202 requeued, 409 already pending, 404 unknown.
- * - `POST /inbox/retry?status=dead|rejected` — requeue every row in that state (after an outage).
- * - `DELETE /inbox/:id` — drop the row and its R2 object.
+ * - `GET /tenants` — every tenant in the table with its public config and per-status counts.
+ * - `GET /tenants/:slug` — one tenant.
+ * - `GET /tenants/:slug/inbox?status=&limit=` — its queue rows, newest first, metadata only.
+ * - `GET /tenants/:slug/inbox/:id` — one row.
+ * - `GET /tenants/:slug/inbox/:id/raw` — the stored message, streamed from R2 as message/rfc822.
+ * - `POST /tenants/:slug/inbox/:id/retry` — requeue one row: 202 requeued, 409 already pending.
+ * - `POST /tenants/:slug/inbox/retry?status=dead|rejected` — requeue every row in that state.
+ * - `DELETE /tenants/:slug/inbox/:id` — drop the row and its R2 object.
  *
- * An `:id` is checked against the ULID alphabet before it goes anywhere near SQL or R2, and every
- * unknown or malformed route is a 404.
+ * A `:slug` must be in the table and an `:id` must match the ULID alphabet before either goes
+ * anywhere near a Durable Object, SQL or R2; every unknown or malformed route is a 404.
  */
-export async function handleOps(request: Request, env: MailWorkerEnv): Promise<Response> {
+export async function handleOps(
+	request: Request,
+	env: RelayEnv,
+	registry: TenantRegistry,
+): Promise<Response> {
 	const url = new URL(request.url);
 	const { pathname } = url;
 	const { method } = request;
@@ -45,6 +57,9 @@ export async function handleOps(request: Request, env: MailWorkerEnv): Promise<R
 
 	const opsToken = opsTokenOf(env);
 	if (opsToken === null) {
+		if (typeof env.OPS_TOKEN === "string" && env.OPS_TOKEN.trim() !== "") {
+			logEvent("warn", "ops_token_too_short", {});
+		}
 		return notFound();
 	}
 	const presented = bearerToken(request);
@@ -52,9 +67,39 @@ export async function handleOps(request: Request, env: MailWorkerEnv): Promise<R
 		return unauthorized();
 	}
 
-	const queue = inboxQueue(env);
+	if (pathname === "/tenants" && method === "GET") {
+		const tenants = registry.list();
+		const counts = await Promise.all(
+			tenants.map((tenant) => inboxQueueFor(env, tenant.slug).counts()),
+		);
+		const items = [];
+		for (const [i, tenant] of tenants.entries()) {
+			items.push({ ...tenant, counts: counts[i] });
+		}
+		return json({ ok: true, items });
+	}
 
-	if (pathname === "/inbox" && method === "GET") {
+	const match = TENANT_ROUTE.exec(pathname);
+	const slug = match?.[1];
+	if (slug === undefined || !SLUG_PATTERN.test(slug)) {
+		return notFound();
+	}
+	const tenant = registry.get(slug);
+	if (tenant === null) {
+		return notFound();
+	}
+	const queue = inboxQueueFor(env, slug);
+	const segment = match?.[2];
+	const action = match?.[3];
+	const atInbox = pathname.endsWith("/inbox");
+
+	if (segment === undefined && !atInbox) {
+		return method === "GET"
+			? json({ ok: true, item: { ...tenant, counts: await queue.counts() } })
+			: notFound();
+	}
+
+	if (atInbox && method === "GET") {
 		const rawStatus = url.searchParams.get("status");
 		let status: InboxStatus | null = null;
 		if (rawStatus !== null) {
@@ -67,7 +112,7 @@ export async function handleOps(request: Request, env: MailWorkerEnv): Promise<R
 		return json({ ok: true, items: await queue.list(status, limit) });
 	}
 
-	if (pathname === "/inbox/retry" && method === "POST") {
+	if (segment === "retry" && action === undefined && method === "POST") {
 		const status = url.searchParams.get("status");
 		if (status !== "dead" && status !== "rejected") {
 			return json({ ok: false, error: "status must be dead or rejected" }, 400);
@@ -76,12 +121,10 @@ export async function handleOps(request: Request, env: MailWorkerEnv): Promise<R
 		return json({ ok: true, status, requeued }, 202);
 	}
 
-	const match = ITEM_ROUTE.exec(pathname);
-	const id = match?.[1];
+	const id = segment;
 	if (id === undefined || !ULID_PATTERN.test(id)) {
 		return notFound();
 	}
-	const action = match?.[2];
 
 	if (action === undefined && method === "GET") {
 		const item = await queue.get(id);

@@ -1,0 +1,8 @@
+[
+	{
+		"slug": "dev",
+		"platform": "odoo",
+		"domains": ["dev.test", "*.dev.test"],
+		"note": "wrangler dev: mail to anything@dev.test goes to the ERP in TENANT_DEV"
+	}
+]

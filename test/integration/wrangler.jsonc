@@ -1,0 +1,13 @@
+{
+	// The integration suites' Worker config: the same bindings as the root wrangler.jsonc, with
+	// worker.ts (the relay bound to the fixture tenants) as the entry.
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "cloudflare-email-relay-test",
+	"main": "worker.ts",
+	"compatibility_date": "2026-08-22",
+	"r2_buckets": [{ "binding": "INBOX", "bucket_name": "email-relay-inbox-test" }],
+	"durable_objects": {
+		"bindings": [{ "name": "INBOX_QUEUE", "class_name": "InboxQueue" }],
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["InboxQueue"] }],
+}

@@ -8,8 +8,9 @@ beforeEach(resetQueue);
 describe("InboxQueue", () => {
 	it("enqueue is idempotent on the id", async () => {
 		const stub = queue();
-		const row = await ingest("once@erp.example.com");
+		const row = await ingest("once@alpha.test");
 		const again = await stub.enqueue({
+			tenant: "alpha",
 			id: row.id,
 			r2Key: row.r2Key,
 			from: row.from,
@@ -18,15 +19,15 @@ describe("InboxQueue", () => {
 			size: row.size,
 			receivedAt: row.receivedAt,
 		});
-		expect(again).toBe(false);
+		expect(again).toBe("duplicate");
 		expect((await stub.list(null, 1000)).filter((r) => r.id === row.id)).toHaveLength(1);
 	});
 
 	it("lists newest first, filtered by status, capped by limit", async () => {
 		const stub = queue();
-		const first = await ingest("first@erp.example.com");
-		const second = await ingest("second@erp.example.com");
-		const third = await ingest("reject422@erp.example.com");
+		const first = await ingest("first@alpha.test");
+		const second = await ingest("second@alpha.test");
+		const third = await ingest("reject422@alpha.test");
 		await makeDue(stub, third.id);
 		await runPass(stub);
 
@@ -43,7 +44,7 @@ describe("InboxQueue", () => {
 		const stub = queue();
 		const rows = [];
 		for (let i = 0; i < 12; i += 1) {
-			rows.push(await ingest(`batch${i}@erp.example.com`));
+			rows.push(await ingest(`batch${i}@alpha.test`));
 		}
 		expect(await runDuePass(stub)).toBe(true);
 		const delivered = (await stub.list("delivered", 1000)).length;
@@ -60,7 +61,7 @@ describe("InboxQueue", () => {
 
 	it("purges the object and the row once retention has run out", async () => {
 		const stub = queue();
-		const row = await ingest("purge@erp.example.com");
+		const row = await ingest("purge@alpha.test");
 		await makeDue(stub, row.id);
 		await runPass(stub);
 		expect((await rowOf(stub, row.id)).status).toBe("delivered");
@@ -75,7 +76,7 @@ describe("InboxQueue", () => {
 
 	it("retry requeues a parked row with a fresh budget and leaves a pending one alone", async () => {
 		const stub = queue();
-		const row = await ingest("reject422@erp.example.com");
+		const row = await ingest("reject422@alpha.test");
 		await makeDue(stub, row.id);
 		await runPass(stub);
 		expect((await rowOf(stub, row.id)).status).toBe("rejected");
@@ -92,16 +93,16 @@ describe("InboxQueue", () => {
 			{ timeout: 5000, interval: 50 },
 		);
 
-		const fresh = await ingest("waiting@erp.example.com");
+		const fresh = await ingest("waiting@alpha.test");
 		expect(await stub.retry(fresh.id)).toBe("already_pending");
 		expect(await stub.retry("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toBe("not_found");
 	});
 
 	it("retryAll requeues every row in one parked state", async () => {
 		const stub = queue();
-		const a = await ingest("reject422@erp.example.com");
-		const b = await ingest("redirect@erp.example.com");
-		const c = await ingest("fine@erp.example.com");
+		const a = await ingest("reject422@alpha.test");
+		const b = await ingest("redirect@alpha.test");
+		const c = await ingest("fine@alpha.test");
 		for (const row of [a, b, c]) {
 			await makeDue(stub, row.id);
 		}
@@ -122,11 +123,33 @@ describe("InboxQueue", () => {
 
 	it("remove drops the row and its object", async () => {
 		const stub = queue();
-		const row = await ingest("gone@erp.example.com");
+		const row = await ingest("gone@alpha.test");
 		expect(await stub.remove(row.id)).toBe(true);
 		expect(await stub.get(row.id)).toBeNull();
 		expect(await env.INBOX.get(row.r2Key)).toBeNull();
 		expect(await stub.remove(row.id)).toBe(false);
+	});
+
+	it("refuses to serve a second tenant once bound", async () => {
+		const stub = queue();
+		const row = await ingest("bound@alpha.test");
+		expect(await stub.enqueue({ ...row, tenant: "beta", id: "01ARZ3NDEKTSV4RRFFQ69G5FAV" })).toBe(
+			"foreign_tenant",
+		);
+		expect(await stub.get("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toBeNull();
+		expect(await stub.tenantSlug()).toBe("alpha");
+	});
+
+	it("counts rows per status", async () => {
+		const stub = queue();
+		expect(await stub.counts()).toEqual({ pending: 0, delivered: 0, rejected: 0, dead: 0 });
+		const a = await ingest("count1@alpha.test");
+		await ingest("count2@alpha.test");
+		const c = await ingest("reject422@alpha.test");
+		await makeDue(stub, a.id);
+		await makeDue(stub, c.id);
+		await runPass(stub);
+		expect(await stub.counts()).toEqual({ pending: 1, delivered: 1, rejected: 1, dead: 0 });
 	});
 
 	it("an alarm with nothing due is a no-op that clears itself", async () => {

@@ -15,8 +15,9 @@
 	"ignorePatterns": ["dist", "node_modules", "**/*.map", "**/*.d.ts"],
 	"overrides": [
 		{
-			// The package entry's default export IS the public Worker handler (email + fetch).
-			"files": ["src/index.ts"],
+			// A Worker entry's default export IS the handler (email + fetch); these are the dev and
+			// integration-test entries, shaped exactly like the fleet's.
+			"files": ["dev/index.ts", "test/integration/worker.ts"],
 			"rules": {
 				"import/no-default-export": "off"
 			}

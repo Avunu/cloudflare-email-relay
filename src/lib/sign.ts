@@ -2,15 +2,17 @@ import { concatBytes, toHex } from "./util";
 import type { ByteSource } from "./util";
 
 // ---------------------------------------------------------------------------
-// Request signing for the push to Odoo.
+// Request signing for the push to the ERP.
 //
-// Every delivery attempt carries X-Mail-Cloudflare-Timestamp (Unix seconds)
-// and X-Mail-Cloudflare-Signature ("v1=" + hex HMAC-SHA256 over
-// "<timestamp>." followed by the raw body bytes). Odoo recomputes the same
-// HMAC with hmac.new(secret, f"{ts}.".encode() + body, sha256) and rejects
-// anything older than ±300 s, so a captured request cannot be replayed later
-// and a tampered body cannot pass. The "v1=" prefix leaves room to rotate the
-// scheme without a flag day: a future "v2=" can be accepted alongside.
+// Every delivery attempt carries X-Email-Relay-Timestamp (Unix seconds) and
+// X-Email-Relay-Signature ("v1=" + hex HMAC-SHA256 over "<timestamp>."
+// followed by the raw body bytes). The ERP recomputes the same HMAC with
+// hmac.new(secret, f"{ts}.".encode() + body, sha256) and rejects anything
+// older than ±300 s, so a captured request cannot be replayed later and a
+// tampered body cannot pass. Within the window a replay is a no-op: both ERPs
+// dedupe on the message's own Message-ID. The "v1=" prefix leaves room to
+// rotate the scheme without a flag day: a future "v2=" (signing the relay id
+// as well) can be accepted alongside.
 //
 // The payload is bytes, not a string: the body is an RFC 5322 message that may
 // contain arbitrary 8-bit content, and both sides must hash exactly the octets
@@ -19,7 +21,7 @@ import type { ByteSource } from "./util";
 
 const enc = new TextEncoder();
 
-/** Seconds since the Unix epoch, the granularity Odoo's `int(timestamp)` check expects. */
+/** Seconds since the Unix epoch, the granularity the ERP's `int(timestamp)` check expects. */
 export function unixSeconds(now: number = Date.now()): number {
 	return Math.floor(now / 1000);
 }
@@ -41,7 +43,7 @@ export async function hmacSha256Hex(secret: string, message: ByteSource): Promis
 	return toHex(new Uint8Array(signature));
 }
 
-/** The value of the X-Mail-Cloudflare-Signature header for one attempt. */
+/** The value of the X-Email-Relay-Signature header for one attempt. */
 export async function signBody(
 	secret: string,
 	timestamp: number,

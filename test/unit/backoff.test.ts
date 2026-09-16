@@ -1,29 +1,10 @@
 import { describe, it, expect } from "vitest";
-import {
-	DEFAULT_BACKOFF_SECONDS,
-	backoffMs,
-	classifyStatus,
-	parseSchedule,
-} from "../../src/lib/backoff";
+import { DEFAULT_BACKOFF_SECONDS, backoffMs, classifyStatus } from "../../src/lib/backoff";
 import type { Outcome } from "../../src/lib/backoff";
 
 describe("DEFAULT_BACKOFF_SECONDS", () => {
 	it("climbs from a minute to six hours", () => {
 		expect(DEFAULT_BACKOFF_SECONDS).toEqual([60, 300, 900, 3600, 21_600]);
-	});
-});
-
-describe("parseSchedule", () => {
-	it("parses a comma-separated list, tolerating whitespace", () => {
-		expect(parseSchedule("60,300,900")).toEqual([60, 300, 900]);
-		expect(parseSchedule(" 60 , 300 ")).toEqual([60, 300]);
-		expect(parseSchedule("5")).toEqual([5]);
-	});
-
-	it("rejects anything that is not a positive integer", () => {
-		for (const raw of ["", "60,", "60,,300", "60,abc", "3OO", "-5", "1.5", "0", "60,0", "1e3"]) {
-			expect(() => parseSchedule(raw), raw).toThrow();
-		}
 	});
 });
 

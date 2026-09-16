@@ -9,7 +9,8 @@ import type { ByteSource } from "./util";
 // from the message; the message itself usually names neither — a list post or
 // a Bcc carries the routed address nowhere in its headers. Odoo's
 // message_parse builds the recipient list from Delivered-To and the bounce
-// check from Return-Path, so the envelope is written into the stored message
+// check from Return-Path (and the Frappe app checks Delivered-To against the
+// account's domain), so the envelope is written into the stored message
 // exactly the way a delivering MTA would, before anything is stored or sent.
 // ---------------------------------------------------------------------------
 
@@ -60,21 +61,29 @@ export function envelopeHeaders(from: string, to: string): HeaderPair[] {
 }
 
 /**
- * Prepend header lines to a raw message, in the order given. The message is never decoded — an
- * attachment's bytes must come out exactly as they went in — so the header block is encoded
- * separately and joined with a single copy. Every pair is validated first, so an unsafe value
- * leaves nothing half-built.
+ * The encoded header lines, in the order given, each CRLF-terminated. Every pair is validated
+ * first, so an unsafe value leaves nothing half-built.
  */
-export function prependHeaders(
-	raw: ByteSource,
-	headers: readonly HeaderPair[],
-): Uint8Array<ArrayBuffer> {
+export function headerBlock(headers: readonly HeaderPair[]): Uint8Array {
 	let block = "";
 	for (const [name, value] of headers) {
 		assertHeaderSafe(name, value);
 		block += `${name}: ${value}\r\n`;
 	}
-	return concatBytes(enc.encode(block), raw);
+	return enc.encode(block);
+}
+
+/**
+ * Prepend header lines to a raw message. The message is never decoded — an attachment's bytes must
+ * come out exactly as they went in — so the header block is encoded separately and joined with a
+ * single copy. The email handler streams instead (see handlers/email.ts); this is the buffered form
+ * for callers that already hold the bytes.
+ */
+export function prependHeaders(
+	raw: ByteSource,
+	headers: readonly HeaderPair[],
+): Uint8Array<ArrayBuffer> {
+	return concatBytes(headerBlock(headers), raw);
 }
 
 /** Longest Message-ID kept as R2 metadata; anything longer is truncated, never dropped. */

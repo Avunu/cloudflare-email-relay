@@ -17,11 +17,12 @@
 		"isolatedModules": true,
 
 		"esModuleInterop": true,
+		"resolveJsonModule": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"noEmit": true
 	},
-	"include": ["src/**/*.ts", "test/**/*.ts"],
+	"include": ["src/**/*.ts", "dev/**/*.ts", "dev/**/*.json", "test/**/*.ts"],
 	"//": "test/integration uses the cloudflare:test module (typed only under the workers pool); it is transpiled+run by vitest, not checked here.",
 	"exclude": ["node_modules", "dist", "test/integration"]
 }

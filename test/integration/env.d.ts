@@ -4,17 +4,14 @@
 // *derived* from `Cloudflare.GlobalProps["mainModule"]`, so it is populated by declaring the main
 // module here instead — which is what makes `exports.default.fetch()` typed. Doing it by hand keeps
 // the tests independent of a generated worker-configuration.d.ts.
-import type { MailWorkerEnv } from "../../src/env";
+import type { RelayEnv } from "../../src/env";
 
 declare global {
 	namespace Cloudflare {
-		interface Env extends MailWorkerEnv {
-			/** Test/fixtures/simple.eml, injected by vitest.integration.config.ts. */
-			FIXTURE_EML: string;
-		}
+		interface Env extends RelayEnv {}
 
 		interface GlobalProps {
-			mainModule: typeof import("../../src/index");
+			mainModule: typeof import("./worker");
 			durableNamespaces: "InboxQueue";
 		}
 	}

@@ -1,10 +1,11 @@
 import { createExecutionContext, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
-import worker from "../../src/index";
-import { inboxQueue } from "../../src/inbox-do";
+import type { RelayEnv } from "../../src/env";
+import { inboxQueueFor } from "../../src/inbox-do";
 import type { InboxQueue, InboxRecord } from "../../src/inbox-do";
-import type { MailWorkerEnv } from "../../src/env";
-import { CONTROL_ORIGIN, FIXTURE_EML, OPS_TOKEN } from "./outbound";
+import { domainOf } from "../../src/tenants";
+import worker from "./worker";
+import { CONTROL_ORIGIN, FIXTURE_EML, OPS_TOKEN, TEST_TENANTS } from "./outbound";
 import type { CapturedDelivery } from "./outbound";
 
 /** The fixture message's own Message-ID, as the row and the R2 metadata should carry it. */
@@ -53,10 +54,7 @@ export function mockMessage(
 }
 
 /** Run the worker's email handler on `message` with the test env (or an override of it). */
-export async function deliverToWorker(
-	message: MockMessage,
-	override?: MailWorkerEnv,
-): Promise<void> {
+export async function deliverToWorker(message: MockMessage, override?: RelayEnv): Promise<void> {
 	const handler = worker.email;
 	if (handler === undefined) {
 		throw new Error("the worker exports no email handler");
@@ -64,36 +62,52 @@ export async function deliverToWorker(
 	await handler(message, override ?? env, createExecutionContext());
 }
 
-/** Ingest one fixture message for `to` and return its queue row. */
+/** The fixture tenant that owns `to`, by the same rule the worker routes with. */
+export function tenantOf(to: string): string {
+	const domain = domainOf(to) ?? "";
+	const hit = TEST_TENANTS.find((tenant) =>
+		tenant.domains.some((d) => (d.startsWith("*.") ? domain.endsWith(d.slice(1)) : d === domain)),
+	);
+	if (hit === undefined) {
+		throw new Error(`no fixture tenant serves ${to}`);
+	}
+	return hit.slug;
+}
+
+/** Ingest one fixture message for `to` and return its queue row (in its tenant's queue). */
 export async function ingest(to: string, from = "alice@example.com"): Promise<InboxRecord> {
 	await deliverToWorker(mockMessage(from, to));
-	const row = (await inboxQueue(env).list("pending", 1000)).find((r) => r.to === to);
+	const row = (await queue(tenantOf(to)).list("pending", 1000)).find((r) => r.to === to);
 	if (row === undefined) {
 		throw new Error(`no pending row for ${to}`);
 	}
 	return row;
 }
 
-export function queue(): DurableObjectStub<InboxQueue> {
-	return inboxQueue(env);
+/** One tenant's queue stub; `alpha` (the Odoo fixture) unless told otherwise. */
+export function queue(slug = "alpha"): DurableObjectStub<InboxQueue> {
+	return inboxQueueFor(env, slug);
 }
 
 /**
- * Wipe the queue, its alarm and the bucket. The pool shares Durable Object and R2 storage across
- * the tests of a file, so every suite starts each test from an empty inbox.
+ * Wipe every fixture tenant's queue and alarm, and the bucket. The pool shares Durable Object and
+ * R2 storage across the tests of a file, so every suite starts each test from an empty inbox. The
+ * `meta` row is kept: the instance keeps serving the same tenant.
  */
 export async function resetQueue(): Promise<void> {
-	await runInDurableObject(queue(), async (_instance, state) => {
-		state.storage.sql.exec("DELETE FROM inbox");
-		await state.storage.deleteAlarm();
-	});
+	for (const tenant of TEST_TENANTS) {
+		await runInDurableObject(queue(tenant.slug), async (_instance, state) => {
+			state.storage.sql.exec("DELETE FROM inbox");
+			await state.storage.deleteAlarm();
+		});
+	}
 	const listed = await env.INBOX.list();
 	if (listed.objects.length > 0) {
 		await env.INBOX.delete(listed.objects.map((object) => object.key));
 	}
 }
 
-/** What the fake Odoo captured for one delivery, or null if it never arrived. */
+/** What the fake ERP captured for one delivery, or null if it never arrived. */
 export async function captured(id: string): Promise<CapturedDelivery | null> {
 	const response = await fetch(`${CONTROL_ORIGIN}/captured/${id}`);
 	if (response.status !== 200) {
@@ -153,5 +167,5 @@ export function ops(
 	if (token !== null) {
 		headers.set("Authorization", `Bearer ${token}`);
 	}
-	return exports.default.fetch(`https://mail.test${path}`, { ...init, headers });
+	return exports.default.fetch(`https://relay.test${path}`, { ...init, headers });
 }
