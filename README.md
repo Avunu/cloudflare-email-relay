@@ -8,11 +8,11 @@ Outbound mail does not pass through here: each ERP calls the Cloudflare Email Se
 
 ## Concepts
 
-| Term | Meaning |
-| --- | --- |
-| worker | One deployment: one wrangler.jsonc, one R2 bucket, one ops token. A shared relay serves many tenants; a dedicated worker serves one. |
+| Term   | Meaning                                                                                                                                    |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| worker | One deployment: one wrangler.jsonc, one R2 bucket, one ops token. A shared relay serves many tenants; a dedicated worker serves one.       |
 | tenant | One ERP instance. A slug, a platform (odoo or frappe), the domains routed to it, its tunables — and, as a secret, its inbound URL and key. |
-| domain | The routing key: the domain of the envelope recipient. Exact (acme.example) or a wildcard for every subdomain (*.acme.example). |
+| domain | The routing key: the domain of the envelope recipient. Exact (acme.example) or a wildcard for every subdomain (*.acme.example).            |
 
 A recipient whose domain belongs to no tenant, or to a disabled one, is **rejected at SMTP time** with a fixed reason — the relay never guesses a tenant and never drops mail silently.
 
@@ -39,17 +39,17 @@ export const { InboxQueue } = relay; // the Durable Object, bound to this table
 
 Each attempt is `POST <tenant's inboundUrl>` with the stored message as the body, `redirect: manual`.
 
-| Header | Value |
-| --- | --- |
-| Content-Type | message/rfc822 |
-| X-Email-Relay-Id | the row's ULID (stable across attempts — the ERP may deduplicate on it) |
-| X-Email-Relay-Tenant | the tenant slug |
-| X-Email-Relay-Timestamp | Unix seconds, fresh per attempt |
-| X-Email-Relay-Signature | v1= + hex HMAC-SHA256(secret, "<timestamp>." + body bytes) |
+| Header                            | Value                                                                                  |
+| --------------------------------- | -------------------------------------------------------------------------------------- |
+| Content-Type                      | message/rfc822                                                                         |
+| X-Email-Relay-Id                  | the row's ULID (stable across attempts — the ERP may deduplicate on it)                |
+| X-Email-Relay-Tenant              | the tenant slug                                                                        |
+| X-Email-Relay-Timestamp           | Unix seconds, fresh per attempt                                                        |
+| X-Email-Relay-Signature           | v1= + hex HMAC-SHA256(secret, "<timestamp>." + body bytes)                             |
 | X-Email-Relay-Envelope-From / -To | the SMTP envelope (percent-encoded if not printable ASCII; From is empty for a bounce) |
-| X-Email-Relay-Attempt | 1-based attempt number |
-| User-Agent | cloudflare-email-relay/<version> |
-| CF-Access-Client-Id / -Secret | only when the tenant's secret carries an Access service token |
+| X-Email-Relay-Attempt             | 1-based attempt number                                                                 |
+| User-Agent                        | cloudflare-email-relay/<version>                                                       |
+| CF-Access-Client-Id / -Secret     | only when the tenant's secret carries an Access service token                          |
 
 The body already contains `Delivered-To` (the envelope recipient — the ERP should check its domain is one it owns) and `Return-Path` (`<>` for a bounce) as its first two header lines.
 
@@ -66,11 +66,11 @@ Replay protection is the timestamp window; within it a replayed request is a no-
 
 The ERP answers with JSON — `{"ok": true, "remote_ref": "<record id or name>" | null, "id": "<relay id>"}` on success, `{"ok": false, "error": "<one line>"}` otherwise. Frappe's `{"message": …}` wrapper and `{"exception": …}` error shape are understood, as are the pre-contract `thread_id` (Odoo) and `communication` (Frappe) fields.
 
-| ERP responds | Row becomes |
-| --- | --- |
-| 2xx | delivered — remoteRef recorded when present |
-| 408, 429, 5xx, timeout, network error | pending — retried on the schedule; dead once attempts run out |
-| any other 4xx, or a 3xx (redirects are never followed) | rejected — parked for an operator |
+| ERP responds                                           | Row becomes                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------- |
+| 2xx                                                    | delivered — remoteRef recorded when present                   |
+| 408, 429, 5xx, timeout, network error                  | pending — retried on the schedule; dead once attempts run out |
+| any other 4xx, or a 3xx (redirects are never followed) | rejected — parked for an operator                             |
 
 The ERP-side URLs the fleet expects: Odoo `https://<odoo>/mail_cloudflare/inbound/<key>`; Frappe `https://<site>/api/method/cloudflare_email_delivery.api.inbound?key=<key>`. Both embed a per-server key generated by the ERP, so the URL itself is a secret.
 
@@ -112,15 +112,15 @@ The secret half, one Worker secret per tenant named `TENANT_<SLUG>` (`acme-eu` �
 
 `GET /health` is public. Everything else needs `Authorization: Bearer <OPS_TOKEN>` (≥ 32 characters; while unset or shorter, every ops route answers 404). One token per Worker — tenants never receive it.
 
-| Route | Effect |
-| --- | --- |
-| GET /tenants | every tenant's public config plus {pending, delivered, rejected, dead} counts |
-| GET /tenants/:slug | one tenant |
-| GET /tenants/:slug/inbox?status=&limit= | its rows, newest first (limit ≤ 500, default 50) |
-| GET /tenants/:slug/inbox/:id · …/:id/raw | one row · the stored .eml |
-| POST /tenants/:slug/inbox/:id/retry | requeue one row: 202, or 409 when it is already pending |
-| POST /tenants/:slug/inbox/retry?status=dead\|rejected | requeue every row in that state |
-| DELETE /tenants/:slug/inbox/:id | drop the row and its object |
+| Route                                                 | Effect                                                                        |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------- |
+| GET /tenants                                          | every tenant's public config plus {pending, delivered, rejected, dead} counts |
+| GET /tenants/:slug                                    | one tenant                                                                    |
+| GET /tenants/:slug/inbox?status=&limit=               | its rows, newest first (limit ≤ 500, default 50)                              |
+| GET /tenants/:slug/inbox/:id · …/:id/raw              | one row · the stored .eml                                                     |
+| POST /tenants/:slug/inbox/:id/retry                   | requeue one row: 202, or 409 when it is already pending                       |
+| POST /tenants/:slug/inbox/retry?status=dead\|rejected | requeue every row in that state                                               |
+| DELETE /tenants/:slug/inbox/:id                       | drop the row and its object                                                   |
 
 The ops API lives on the Worker's `workers.dev` hostname. For an extra layer, put an Access policy in front of it (an Access application on that hostname, or `workers_dev: false` plus a custom route behind Access) — no code change is involved.
 
