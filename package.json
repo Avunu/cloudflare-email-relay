@@ -1,6 +1,6 @@
 {
 	"name": "@avunu/cloudflare-email-relay",
-	"version": "1.1.0",
+	"version": "2.0.0",
 	"description": "Multi-tenant Cloudflare Email Routing relay: stores every inbound message in R2 and pushes it to the owning Odoo or Frappe instance over signed HTTPS with durable per-tenant retries. Consumed by the deployment fleet's thin wrappers.",
 	"license": "MIT",
 	"repository": {
