@@ -13,7 +13,14 @@
 		"style": "off",
 		"suspicious": "off"
 	},
-	"ignorePatterns": ["dist", "node_modules", "**/*.map", "**/*.d.ts", "test/integration"],
+	"ignorePatterns": [
+		"dist",
+		"docs-site",
+		"node_modules",
+		"**/*.map",
+		"**/*.d.ts",
+		"test/integration"
+	],
 	"plugins": ["typescript"],
 	"rules": {
 		"typescript/no-floating-promises": "error",

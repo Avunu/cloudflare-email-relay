@@ -12,7 +12,7 @@
 		"style": "error",
 		"suspicious": "error"
 	},
-	"ignorePatterns": ["dist", "node_modules", "**/*.map", "**/*.d.ts"],
+	"ignorePatterns": ["dist", "docs-site", "node_modules", "**/*.map", "**/*.d.ts"],
 	"overrides": [
 		{
 			// A Worker entry's default export IS the handler (email + fetch); these are the dev and
