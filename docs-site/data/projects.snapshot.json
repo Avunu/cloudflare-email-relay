@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-06T05:10:50Z",
+  "generated": "2026-10-06T09:23:44Z",
   "site": "https://avunu.net",
   "projects": [
     {
@@ -107,7 +107,7 @@
       "repo": "https://github.com/Avunu/frappe-nix",
       "page": "https://avunu.net/open-source/frappe-nix/",
       "docs": null,
-      "license": null,
+      "license": "MIT",
       "status": "active",
       "suite": "nix-platform"
     },
@@ -167,7 +167,7 @@
       "repo": "https://github.com/Avunu/nixos-micro-desktop",
       "page": "https://avunu.net/open-source/nixos-micro-desktop/",
       "docs": null,
-      "license": null,
+      "license": "MIT",
       "status": "active",
       "suite": null
     },
@@ -239,7 +239,7 @@
       "repo": "https://github.com/Avunu/odoo-nix",
       "page": "https://avunu.net/open-source/odoo-nix/",
       "docs": null,
-      "license": null,
+      "license": "MIT",
       "status": "active",
       "suite": "nix-platform"
     },
