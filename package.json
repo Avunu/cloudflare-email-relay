@@ -50,13 +50,13 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.22.0",
-		"@cloudflare/workers-types": "^5.20261002.1",
+		"@cloudflare/workers-types": "^5.20261003.1",
 		"oxfmt": "^0.71.0",
 		"oxlint": "^1.86.0",
 		"oxlint-tsgolint": "^7.0.2003",
 		"typescript": "^7.0.2",
 		"vitest": "^4",
-		"wrangler": "^4.146.0"
+		"wrangler": "^4.147.0"
 	},
 	"peerDependencies": {
 		"@cloudflare/workers-types": "*"
