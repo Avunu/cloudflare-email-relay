@@ -31,12 +31,14 @@ updates:
 
   # The documentation site (docs-site/) has its own package manager and lockfile. The
   # github-actions entry above also keeps the pinned actions of .github/workflows/docs.yml current.
-  - package-ecosystem: bun
+  - package-ecosystem: npm
     directory: /docs-site
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+      exclude:
+        - "@avunu/docusystem"
     groups:
       docs-site-packages:
         patterns: ["*"]
