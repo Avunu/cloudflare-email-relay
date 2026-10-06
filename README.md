@@ -1,8 +1,10 @@
 # @avunu/cloudflare-email-relay
 
+**Documentation:** [cloudflare-email.avunu.net](https://cloudflare-email.avunu.net) covers the whole Cloudflare Email suite: how it works, deploying the relay, the Frappe/ERPNext, Odoo and WordPress adapters, troubleshooting and the ops API. The Markdown source is in [`docs/`](docs/README.md).
+
 A multi-tenant Cloudflare Email Routing Worker that turns inbound mail into signed HTTPS pushes to the ERP that owns the recipient's domain — an Odoo database running [`mail_cloudflare`](https://github.com/Avunu/avunu-odoo-addons/tree/18.0/mail_cloudflare) or a Frappe site running [`cloudflare_email_delivery`](https://github.com/Avunu/cloudflare_email_delivery). Every message is stored in R2 before anything is pushed, and each tenant has its own durable retry queue, so an ERP outage, a wrong secret or a bad deploy can delay a message but never lose it.
 
-This package holds all of the logic. Deployments live in a separate fleet repository that supplies, per Worker, a `wrangler.jsonc`, a committed `tenants.json` and one secret per tenant — see **Deployment**.
+This package holds all of the logic. Deployments live in a separate fleet repository that supplies, per Worker, a `wrangler.jsonc`, a committed `tenants.json` and one secret per tenant — see [Deployment](#deployment).
 
 Outbound mail does not pass through here: each ERP calls the Cloudflare Email Sending API directly.
 
@@ -37,6 +39,8 @@ export const { InboxQueue } = relay; // the Durable Object, bound to this table
 
 ## Inbound contract
 
+The same contract, with a receiver checklist and a script that signs a test request, is in the [Inbound contract](docs/reference/inbound-contract.md) guide.
+
 Each attempt is `POST <tenant's inboundUrl>` with the stored message as the body, `redirect: manual`.
 
 | Header                            | Value                                                                                  |
@@ -62,7 +66,7 @@ ok = hmac.compare_digest(signature, f"v1={expected}") and abs(time.time() - int(
 
 Sign the timestamp string exactly as received. The cross-implementation vector every side pins: `HMAC("key", 1700000000, b"hello")` → `v1=4d583a269f4f276a3fa80ff31b5a01879a848096983222a17893d198418939aa`.
 
-Replay protection is the timestamp window; within it a replayed request is a no-op because both ERPs deduplicate on the message's own `Message-ID`. The `v1=` prefix exists so a `v2=` that also signs the relay id can be introduced without a flag day.
+Replay protection is the timestamp window; within it a replayed request is a no-op because the ERPs deduplicate (Odoo on the message's own `Message-ID`, Frappe on the relay id). The `v1=` prefix exists so a `v2=` that also signs the relay id can be introduced without a flag day.
 
 The ERP answers with JSON — `{"ok": true, "remote_ref": "<record id or name>" | null, "id": "<relay id>"}` on success, `{"ok": false, "error": "<one line>"}` otherwise. Frappe's `{"message": …}` wrapper and `{"exception": …}` error shape are understood, as are the pre-contract `thread_id` (Odoo) and `communication` (Frappe) fields.
 
@@ -76,80 +80,17 @@ The ERP-side URLs the fleet expects: Odoo `https://<odoo>/mail_cloudflare/inboun
 
 ## Tenant model
 
-The committed half, one row per tenant in the fleet's `tenants.json`:
-
-```jsonc
-{
-	"slug": "acme", // [a-z0-9-], ≤ 63 chars; immutable — it names the queue, the R2 prefix and the secret
-	"platform": "odoo", // or "frappe"; documentation and URL validation only, the contract is identical
-	"domains": ["acme.example", "*.acme.example"], // lowercase A-labels; a wildcard never matches its apex
-	"enabled": true, // false: reject at intake ("Recipient domain is disabled on this relay")
-	"note": "Acme Co, ticket 123", // free text, never read
-	"retentionDays": 30, // 0 = purge on delivery
-	"maxAttempts": 32, // ≈ 7 days on the default schedule
-	"backoffSeconds": [60, 300, 900, 3600, 21600], // last value repeats
-	"deliveryTimeoutSeconds": 30, // ≤ 60
-	"deliveryDelaySeconds": 0,
-}
-```
-
-Table-wide rules: slugs unique; every domain claimed by one tenant; a wildcard may not cover a domain (exact or wildcard) of another tenant. A table that breaks a rule fails `createRelay()`.
-
-The secret half, one Worker secret per tenant named `TENANT_<SLUG>` (`acme-eu` → `TENANT_ACME_EU`), holding a JSON string:
-
-```json
-{
-	"inboundUrl": "https://erp.acme.example/mail_cloudflare/inbound/<key>",
-	"secret": "<≥16 chars>",
-	"accessClientId": "…",
-	"accessClientSecret": "…"
-}
-```
-
-`accessClientId`/`accessClientSecret` are optional, both or neither. The secret is read on every alarm pass: a missing or malformed one parks that tenant's rows as `pending` with no attempt charged and logs `tenant_config_error` once a minute until it is fixed — intake and every other tenant carry on. Fixing the secret needs no redeploy.
+A tenant is one ERP instance. Its public half is a row in the fleet's committed `tenants.json` (a slug, a platform, the domains routed to it and its retry and retention settings); its secret half is one Worker secret named `TENANT_<SLUG>` (`acme-eu` → `TENANT_ACME_EU`) holding the inbound URL, the HMAC secret and, optionally, a Cloudflare Access service token. A table that breaks a rule (a duplicate slug, a domain claimed twice, a wildcard that covers another tenant's domain) fails `createRelay()`. A missing or malformed secret parks only that tenant's rows as `pending`, with no attempt charged, and logs `tenant_config_error` once a minute until it is fixed; fixing it needs no redeploy. Every field, default and limit is in [Tenants and secrets](docs/reference/tenants.md).
 
 ## Ops API
 
-`GET /health` is public. Everything else needs `Authorization: Bearer <OPS_TOKEN>` (≥ 32 characters; while unset or shorter, every ops route answers 404). One token per Worker — tenants never receive it.
-
-| Route                                                 | Effect                                                                        |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------- |
-| GET /tenants                                          | every tenant's public config plus {pending, delivered, rejected, dead} counts |
-| GET /tenants/:slug                                    | one tenant                                                                    |
-| GET /tenants/:slug/inbox?status=&limit=               | its rows, newest first (limit ≤ 500, default 50)                              |
-| GET /tenants/:slug/inbox/:id · …/:id/raw              | one row · the stored .eml                                                     |
-| POST /tenants/:slug/inbox/:id/retry                   | requeue one row: 202, or 409 when it is already pending                       |
-| POST /tenants/:slug/inbox/retry?status=dead\|rejected | requeue every row in that state                                               |
-| DELETE /tenants/:slug/inbox/:id                       | drop the row and its object                                                   |
-
-The ops API lives on the Worker's `workers.dev` hostname. For an extra layer, put an Access policy in front of it (an Access application on that hostname, or `workers_dev: false` plus a custom route behind Access) — no code change is involved.
+`GET /health` is public. Everything else needs `Authorization: Bearer <OPS_TOKEN>` (≥ 32 characters; while it is unset or shorter, every ops route answers 404) and lets an operator list tenants with their queue counts, list and read a tenant's rows, download the stored `.eml`, requeue one row or every `dead` or `rejected` row, and delete a row. One token per Worker — tenants never receive it. The ops API lives on the Worker's `workers.dev` hostname; for an extra layer, put an Access policy in front of it. The routes, the row fields and the log events are in the [Ops API reference](docs/reference/ops-api.md).
 
 ## Deployment
 
-A Worker is three files in the fleet:
+A Worker is three files in the fleet — `index.ts` (the wrapper above), `tenants.json` and `wrangler.jsonc` (the name, the account, the `INBOX` R2 binding, the `INBOX_QUEUE` Durable Object binding and its `new_sqlite_classes` migration) — plus, once per Worker, an R2 bucket (with a lifecycle rule as a safety net for the purge) and the `OPS_TOKEN` secret, and, once per tenant, a `TENANT_<SLUG>` secret and the Email Routing rules that send its addresses to the Worker. Email Routing can only hand mail to a Worker in the **same Cloudflare account as the zone**, which is what decides between the shared relay and a dedicated Worker for a client that owns its account.
 
-```
-index.ts        the six-line wrapper above
-tenants.json    the committed table
-wrangler.jsonc  name, account_id, the R2 bucket, the Durable Object binding and its migration
-```
-
-```jsonc
-{
-	"name": "email-relay",
-	"main": "index.ts",
-	"account_id": "<the account that owns the zones>",
-	"compatibility_date": "2026-08-22",
-	"observability": { "enabled": true },
-	"r2_buckets": [{ "binding": "INBOX", "bucket_name": "email-relay-inbox" }],
-	"durable_objects": { "bindings": [{ "name": "INBOX_QUEUE", "class_name": "InboxQueue" }] },
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["InboxQueue"] }],
-}
-```
-
-Then, once per Worker: `wrangler r2 bucket create <bucket>`, an R2 lifecycle rule as a safety net for the purge (`wrangler r2 bucket lifecycle add <bucket> --prefix inbox/ --expire-days 180`), `wrangler secret put OPS_TOKEN`, and `wrangler deploy`. Once per tenant: `wrangler secret put TENANT_<SLUG>` with the JSON above, and in the zone's **Email Routing** the addresses (or the catch-all) → _Send to a Worker_ → this Worker. Email Routing can only hand mail to a Worker in the **same Cloudflare account as the zone**, which is what decides between the shared relay and a dedicated Worker for a client that owns its account.
-
-Requires the Workers Paid plan (Durable Objects). No `nodejs_compat`: the relay uses Web APIs only.
+Requires the Workers Paid plan (Durable Objects). No `nodejs_compat`: the relay uses Web APIs only. The walk-through, with the Wrangler configuration and every command, is [Deploying the relay](docs/deploying-the-relay.md).
 
 ## Develop & test
 

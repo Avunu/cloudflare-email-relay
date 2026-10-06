@@ -1,0 +1,10 @@
+{
+	"$schema": "./node_modules/@avunu/docusystem/config.schema.json",
+	"name": "Cloudflare Email",
+	"tagline": "Email for Frappe, ERPNext, Odoo and WordPress without SMTP or IMAP: sent through the Cloudflare API, received through a relay that stores every message before it delivers it.",
+	"slug": "cloudflare-email-relay",
+	"platform": "general",
+	"repo": "https://github.com/Avunu/cloudflare-email-relay",
+	"domain": "cloudflare-email.avunu.net",
+	"license": "MIT"
+}
