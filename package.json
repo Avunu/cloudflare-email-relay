@@ -50,9 +50,9 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.22.0",
-		"@cloudflare/workers-types": "^5.20261005.1",
-		"oxfmt": "^0.71.0",
-		"oxlint": "^1.86.0",
+		"@cloudflare/workers-types": "^5.20261006.1",
+		"oxfmt": "^0.72.0",
+		"oxlint": "^1.87.0",
 		"oxlint-tsgolint": "^7.0.2003",
 		"typescript": "^7.0.2",
 		"vitest": "^4",
