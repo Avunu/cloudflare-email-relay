@@ -49,14 +49,14 @@
 		"zod": "4.6.5"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.22.0",
-		"@cloudflare/workers-types": "^5.20261006.1",
+		"@cloudflare/vitest-pool-workers": "^0.23.0",
+		"@cloudflare/workers-types": "^5.20261009.1",
 		"oxfmt": "^0.72.0",
 		"oxlint": "^1.87.0",
 		"oxlint-tsgolint": "^7.0.2003",
 		"typescript": "^7.0.2",
 		"vitest": "^4",
-		"wrangler": "^4.147.0"
+		"wrangler": "^4.149.0"
 	},
 	"peerDependencies": {
 		"@cloudflare/workers-types": "*"
