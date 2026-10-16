@@ -1,6 +1,6 @@
 # @avunu/cloudflare-email-relay
 
-**Documentation:** [cloudflare-email.avunu.net](https://cloudflare-email.avunu.net) covers the whole Cloudflare Email suite: how it works, deploying the relay, the Frappe/ERPNext, Odoo and WordPress adapters, troubleshooting and the ops API. The Markdown source is in [`docs/`](docs/README.md).
+**Documentation:** [docs.avunu.net/cloudflare-email/](https://docs.avunu.net/cloudflare-email/) covers the whole Cloudflare Email suite: how it works, deploying the relay, the Frappe/ERPNext, Odoo and WordPress adapters, troubleshooting and the ops API. The Markdown source is in [`docs/`](docs/README.md).
 
 A multi-tenant Cloudflare Email Routing Worker that turns inbound mail into signed HTTPS pushes to the ERP that owns the recipient's domain — an Odoo database running [`mail_cloudflare`](https://github.com/Avunu/avunu-odoo-addons/tree/18.0/mail_cloudflare) or a Frappe site running [`cloudflare_email_delivery`](https://github.com/Avunu/cloudflare_email_delivery). Every message is stored in R2 before anything is pushed, and each tenant has its own durable retry queue, so an ERP outage, a wrong secret or a bad deploy can delay a message but never lose it.
 
