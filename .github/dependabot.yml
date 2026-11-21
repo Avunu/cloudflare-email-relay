@@ -1,8 +1,8 @@
 version: 2
 
 # Updates land on `main` automatically (see .github/workflows/dependabot-auto-merge.yml);
-# release-please remains the gate for cutting a release. Dep bumps use the `chore` type so they
-# never force a release on their own — they ride along with the next real release.
+# release-please remains the gate for cutting a release. Dep bumps use the `fix(deps)` type, so
+# each merged bump ships as a patch release.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -11,7 +11,7 @@ updates:
     cooldown:
       default-days: 7
     commit-message:
-      prefix: chore
+      prefix: fix(deps)
     groups:
       github-actions:
         patterns: ["*"]
@@ -25,7 +25,7 @@ updates:
     cooldown:
       default-days: 7
     commit-message:
-      prefix: chore
+      prefix: fix(deps)
     groups:
       npm:
         patterns: ["*"]
