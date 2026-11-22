@@ -44,6 +44,7 @@ export function mockMessage(
 		headers,
 		raw: new Blob([raw]).stream(),
 		rawSize: raw.byteLength,
+		canBeForwarded: true,
 		setReject(reason: string) {
 			rejected = reason;
 		},
