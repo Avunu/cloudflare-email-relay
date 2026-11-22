@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/Avunu/cloudflare-email-relay/compare/cloudflare-email-relay-v2.0.0...cloudflare-email-relay-v2.0.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **test:** add canBeForwarded to the integration mock message ([#55](https://github.com/Avunu/cloudflare-email-relay/issues/55)) ([1854771](https://github.com/Avunu/cloudflare-email-relay/commit/1854771f7bc1f85025ebaa2a3fc784b510115f76))
+
 ## [2.0.0](https://github.com/Avunu/cloudflare-email-relay/compare/cloudflare-email-relay-v1.1.0...cloudflare-email-relay-v2.0.0) (2026-09-16)
 
 
